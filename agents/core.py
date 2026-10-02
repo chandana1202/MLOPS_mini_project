@@ -26,7 +26,7 @@ DISCLAIMER = "Screening opinion only; an accredited consultant makes the determi
 
 
 def load_prompt(name):
-    return yaml.safe_load((Path(os.getenv("PROMPTS_DIR", "prompts")) / f"{name}.yaml").read_text())
+    return yaml.safe_load((Path(os.getenv("PROMPTS_DIR", "prompts")) / f"{name}.yaml").read_text(encoding="utf-8"))
 
 
 @dataclass

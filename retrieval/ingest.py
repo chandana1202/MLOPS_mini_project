@@ -40,7 +40,7 @@ def load_curated(d):
     for f in sorted(Path(d).glob("*.jsonl")):
         if f.name.endswith(".example.jsonl"):
             continue
-        for line in f.read_text().splitlines():
+        for line in f.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 out.append(json.loads(line))
     return out
@@ -93,7 +93,7 @@ def main():
             "chunks_total": len(chunks), "chunks_embedded_this_run": len(todo),
             "sources": sorted({c.get("source", "") for c in chunks}), "needs_ocr": needs_ocr,
             "seconds": round(secs, 2), "chunks_per_s": round(len(todo) / secs, 2) if secs else 0}
-    Path(a.meta_out).write_text(json.dumps(meta, indent=2))
+    Path(a.meta_out).write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(json.dumps(meta, indent=2))
 
 
