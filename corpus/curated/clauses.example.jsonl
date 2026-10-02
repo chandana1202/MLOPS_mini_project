@@ -1,0 +1,2 @@
+{"clause_id": "EIA2006-SCHED-<item>", "type": "schedule_row", "source": "EIA_Notification_2006.pdf", "text": "<COPY EXACT ROW TEXT FROM THE NOTIFICATION>", "meta": {"sector": "<sector>", "item": "<e.g. 5(x)>", "category_default": "B"}}
+{"clause_id": "EIA2006-GENCOND", "type": "general_condition", "source": "EIA_Notification_2006.pdf", "text": "<COPY EXACT GENERAL CONDITION TEXT>", "meta": {"rules": [{"from": "B", "to": "A", "max_distance_km": "<CONFIRM FROM TEXT>", "areas": ["national_park", "wildlife_sanctuary"]}]}}

@@ -1,0 +1,5 @@
+.env
+.chroma/
+__pycache__/
+.venv/
+index_meta.json
