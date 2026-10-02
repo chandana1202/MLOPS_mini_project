@@ -1,0 +1,13 @@
+{
+  "built_at": "2026-10-02T09:11:13.477921+00:00",
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "chunks_total": 91,
+  "chunks_embedded_this_run": 91,
+  "sources": [
+    "EIA_Notification_2006.pdf",
+    "EIA_Notification_2006_searchable.pdf"
+  ],
+  "needs_ocr": [],
+  "seconds": 14.15,
+  "chunks_per_s": 6.43
+}
