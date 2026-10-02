@@ -35,4 +35,4 @@ keys = (
     "elapsed_s",
 )
 
-print(json.dumps({k: r[k] for k in keys}, indent=2))
+print(json.dumps(r["trace"], indent=1)[:6000])
