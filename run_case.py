@@ -36,3 +36,4 @@ keys = (
 )
 
 print(json.dumps(r["trace"], indent=1)[:6000])
+print("MODEL USED:", r["usage"][0]["model"])

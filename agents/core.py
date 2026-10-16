@@ -67,15 +67,29 @@ def _norm(s):
 
 
 def _json(text):
+    if not isinstance(text, str):
+        return None
+
+    text = text.strip()
+
+    # Remove common markdown fences.
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+
+    # First try strict JSON.
     try:
         return json.loads(text)
     except Exception:
-        m = re.search(r"\{.*\}", text or "", re.S)
-        try:
-            return json.loads(m.group(0)) if m else None
-        except Exception:
-            return None
+        pass
 
+    # Then parse the first complete JSON value and ignore trailing junk.
+    try:
+        decoder = json.JSONDecoder()
+        obj, _ = decoder.raw_decode(text)
+        return obj
+    except Exception:
+        return None
 
 def _log(s, kind, **kw):
     s.trace.append({"t": round(time.monotonic() - s.started, 3), "kind": kind, **kw})
@@ -122,8 +136,15 @@ def reason(s, llm):
         if time.monotonic() - s.started > s.limits.timeout_s:
             return _escalate(s, "run_timeout")
         s.steps += 1
-        passages = [{"clause_id": x["clause_id"], "type": x["type"], "text": x["text"]}
-                    for x in s.retrieved.values()]
+        passages=[
+    {
+        "clause_id": x["clause_id"],
+        "type": x["type"],
+        "text": x["text"],
+        "meta": x.get("meta", {}),
+    }
+    for x in s.retrieved.values()
+]
         user = json.dumps({"request_entities": s.entities, "tools": s.tools.specs,
                            "strategy_directive": DIRECTIVES[s.strategy],
                            "retrieved_passages": passages, "last_tool_note": s.last_note,
@@ -137,7 +158,12 @@ def reason(s, llm):
         if not isinstance(act, dict):
             return _escalate(s, "unparseable_model_output")
         if act.get("action") == "final":
-            s.draft = act
+    # Normalize citation field names from LLMs.
+    # The verifier requires "quote", but some models return "text".
+             for c in act.get("citations") or []:
+                  if not c.get("quote") and c.get("text"):
+                        c["quote"] = c["text"]
+             s.draft = act
         elif act.get("action") == "tool":
             if s.tool_calls >= s.limits.max_tool_calls:
                 return _escalate(s, "max_tool_calls_exceeded")
