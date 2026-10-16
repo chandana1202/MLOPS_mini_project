@@ -1,0 +1,56 @@
+﻿services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  indexer:
+    build: .
+    image: eia-app
+    command: python -m retrieval.ingest --raw corpus/raw --curated corpus/curated --meta-out /data/index_meta.json
+    env_file: .env
+    environment:
+      CHROMA_PATH: /data/chroma
+      HF_HOME: /data/hf
+    volumes:
+      - appdata:/data
+    restart: "no"
+
+  worker:
+    build: .
+    image: eia-app
+    command: rq worker runs --url redis://redis:6379
+    env_file: .env
+    environment:
+      CHROMA_PATH: /data/chroma
+      HF_HOME: /data/hf
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - appdata:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      indexer:
+        condition: service_completed_successfully
+
+  api:
+    build: .
+    image: eia-app
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 10
+
+volumes:
+  appdata:

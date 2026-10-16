@@ -38,6 +38,7 @@ class ChromaStore:
         self.client = chromadb.PersistentClient(path=path or os.getenv("CHROMA_PATH", "./.chroma"))
         self.col = self.client.get_or_create_collection(collection, metadata={"hnsw:space": "cosine"})
         self._enc = None
+        self.embed(["warmup"])
 
     def embed(self, texts):
         if self._enc is None:

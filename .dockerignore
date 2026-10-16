@@ -1,0 +1,7 @@
+﻿.venv
+.env
+.chroma
+.git
+.pytest_cache
+__pycache__
+corpus/scans

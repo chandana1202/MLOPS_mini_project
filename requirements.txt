@@ -6,3 +6,8 @@ sentence-transformers
 pypdf
 pyyaml
 pytest
+fastapi
+uvicorn
+redis
+rq
+python-dotenv
