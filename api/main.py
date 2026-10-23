@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 from redis import Redis
 from rq import Queue
 from rq.job import Job
-
+from agents.guardrails import check_request
 redis = Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379"))
 queue = Queue("runs", connection=redis)
 app = FastAPI(title="EIA screening")
@@ -39,6 +39,10 @@ def quarantine(body, errors):
 
 @app.post("/runs", status_code=202)
 def submit(body: dict):
+    g = check_request(body)
+    if g:
+        quarantine(body, g)
+        raise HTTPException(422, {"rejected": True, "guardrail": True, "errors": g})
     try:
         req = ProjectRequest(**body)
     except ValidationError as e:
@@ -63,6 +67,7 @@ def status(run_id: str):
         out["result"] = job.result
     elif s == "failed":
         out["error"] = "run failed; not a confident answer"
+        out["detail"] = (job.exc_info or "").strip().splitlines()[-1:]
     return out
 
 
@@ -75,3 +80,17 @@ def quarantined():
 def health():
     redis.ping()
     return {"ok": True}
+@app.post("/demo/llm_down")
+def llm_down(on: bool = True):
+    if on:
+        redis.set("demo:llm_down", "1")
+    else:
+        redis.delete("demo:llm_down")
+    return {"llm_down": on}
+
+
+@app.get("/breaker")
+def breaker():
+    return {"open": bool(redis.exists("breaker:open")),
+            "failures": int(redis.get("breaker:fails") or 0),
+            "llm_retries_total": int(redis.get("metrics:llm_retries") or 0)}
