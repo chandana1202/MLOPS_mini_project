@@ -180,7 +180,8 @@ def reason(s, llm):
             _log(s, "tool", tool=act.get("tool"), args=act.get("args"),
                  passage_ids=[x["clause_id"] for x in out["passages"]],
                  scores=[round(x["score"], 3) for x in out["passages"]],
-                 latency_s=round(time.monotonic() - t0, 4))
+                 latency_s=round(time.monotonic() - t0, 4)
+                 )
         else:
             return _escalate(s, "malformed_action")
 
