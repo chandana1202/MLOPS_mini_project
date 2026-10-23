@@ -267,7 +267,9 @@ def finalize(s):
                 "escalation_reason": d.get("escalation_reason"), "verified": bool(ok),
                 "prompt_versions": {"reasoner": s.reasoner_prompt}, "attempts": s.attempts + 1,
                 "steps": s.steps, "tool_calls": s.tool_calls, "usage": s.usage, "trace": s.trace,
-                "elapsed_s": round(time.monotonic() - s.started, 3), "disclaimer": DISCLAIMER}
+                "elapsed_s": round(time.monotonic() - s.started, 3), "disclaimer": DISCLAIMER,
+                "passages": {k: {"type": v["type"], "text": v["text"], "score": round(v["score"], 3)}
+                             for k, v in s.retrieved.items()}}
 
 
 def run_sync(request, llm, store, limits=None):

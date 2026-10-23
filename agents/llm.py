@@ -47,8 +47,6 @@ class OpenAICompatClient(LLMClient):
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = json.load(r)
             text = data["choices"][0]["message"]["content"]
-            print("DEBUG LLM CONTENT TYPE:", type(text).__name__)
-            print("DEBUG LLM CONTENT:", repr(text))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {e.code}: {body}") from e
