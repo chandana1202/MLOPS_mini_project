@@ -21,7 +21,7 @@ class ProjectRequest(BaseModel):
     capacity_unit: str = Field(min_length=1, max_length=30)
     area_ha: float = Field(gt=0, lt=1_000_000)
     state: str = Field(min_length=2, max_length=60)
-    protected_area_type: AreaType = "none"
+    protected_area_type: AreaType 
     distance_to_protected_area_km: Optional[float] = Field(default=None, ge=0, le=20000)
     description: str = Field(default="", max_length=2000)
 

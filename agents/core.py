@@ -91,6 +91,7 @@ def _json(text):
     except Exception:
         return None
 
+
 def _log(s, kind, **kw):
     s.trace.append({"t": round(time.monotonic() - s.started, 3), "kind": kind, **kw})
 
@@ -119,9 +120,11 @@ def extract(s, llm):
         if k != "description" and v is not None:
             ent[k] = v
     ent.setdefault("uncertain", [])
+    if ent.get("protected_area_type") == "none":
+        ent["uncertain"] = [u for u in ent["uncertain"] if u != "proximity"]
     s.entities = ent
     _log(s, "extract", prompt=p["version"], entities=ent)
-    if "proximity" in ent["uncertain"] or (ent.get("protected_area_type")
+    if "proximity" in ent["uncertain"] or (ent.get("protected_area_type") not in (None, "none")
                                            and ent.get("distance_to_protected_area_km") is None):
         _escalate(s, "proximity_uncertain", "Proximity to a protected area could not be determined.")
 
@@ -136,15 +139,11 @@ def reason(s, llm):
         if time.monotonic() - s.started > s.limits.timeout_s:
             return _escalate(s, "run_timeout")
         s.steps += 1
-        passages=[
-    {
-        "clause_id": x["clause_id"],
-        "type": x["type"],
-        "text": x["text"],
-        "meta": x.get("meta", {}),
-    }
-    for x in s.retrieved.values()
-]
+        passages = [
+            {"clause_id": x["clause_id"], "type": x["type"],
+             "text": x["text"], "meta": x.get("meta", {})}
+            for x in s.retrieved.values()
+        ]
         user = json.dumps({"request_entities": s.entities, "tools": s.tools.specs,
                            "strategy_directive": DIRECTIVES[s.strategy],
                            "retrieved_passages": passages, "last_tool_note": s.last_note,
@@ -158,12 +157,15 @@ def reason(s, llm):
         if not isinstance(act, dict):
             return _escalate(s, "unparseable_model_output")
         if act.get("action") == "final":
-    # Normalize citation field names from LLMs.
-    # The verifier requires "quote", but some models return "text".
-             for c in act.get("citations") or []:
-                  if not c.get("quote") and c.get("text"):
-                        c["quote"] = c["text"]
-             s.draft = act
+            # Some models return "text" instead of "quote"; the verifier needs "quote".
+            for c in act.get("citations") or []:
+                if not c.get("quote") and c.get("text"):
+                    c["quote"] = c["text"]
+            # Demo item 6: corrupt the first citation on attempt 0 only, so the verifier
+            # catches it and the retry recovers. Off unless DEMO_BAD_CITATION=1.
+            if os.getenv("DEMO_BAD_CITATION") == "1" and s.attempts == 0 and act.get("citations"):
+                act["citations"][0]["quote"] = "this sentence appears in no retrieved passage"
+            s.draft = act
         elif act.get("action") == "tool":
             if s.tool_calls >= s.limits.max_tool_calls:
                 return _escalate(s, "max_tool_calls_exceeded")
@@ -171,7 +173,9 @@ def reason(s, llm):
             t0 = time.monotonic()
             out = s.tools.call(act.get("tool"), act.get("args") or {})
             for x in out["passages"]:
-                s.retrieved[x["clause_id"]] = x
+                old = s.retrieved.get(x["clause_id"])
+                if old is None or x["score"] > old["score"]:
+                    s.retrieved[x["clause_id"]] = x
             s.last_note = out["note"]
             _log(s, "tool", tool=act.get("tool"), args=act.get("args"),
                  passage_ids=[x["clause_id"] for x in out["passages"]],
@@ -184,7 +188,8 @@ def reason(s, llm):
 # ---------------- Verifier ----------------
 def verify(s, llm=None):
     d, fails = s.draft, []
-    if s.verification and s.verification.get("escalation") and d["escalation_reason"] != "sector_not_in_corpus":
+    if (s.verification and s.verification.get("escalation")
+            and d.get("escalation_reason") != "sector_not_in_corpus"):
         return  # bounds/proximity escalations are already terminal
     if d.get("route") not in ROUTES:
         fails.append("invalid_route")
@@ -204,6 +209,11 @@ def verify(s, llm=None):
                 fails.append(f"citation_not_retrieved:{c.get('clause_id')}")
             elif not c.get("quote") or _norm(c["quote"]) not in _norm(p["text"]):
                 fails.append(f"quote_not_in_passage:{c['clause_id']}")
+        # a cited Schedule row must actually be relevant to this project's sector
+        for c in cites:
+            p = s.retrieved.get(c.get("clause_id"))
+            if p is not None and p["type"] == "schedule_row" and p["score"] < MIN_SCORE:
+                fails.append(f"cited_row_not_relevant:{c['clause_id']}")
         cited = {c.get("clause_id") for c in cites}
         rows = [s.retrieved[i] for i in cited if i in s.retrieved and s.retrieved[i]["type"] == "schedule_row"]
         gcs = [x for x in s.retrieved.values() if x["type"] == "general_condition"]
