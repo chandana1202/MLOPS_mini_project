@@ -8,7 +8,7 @@
 
   indexer:
     build: .
-    image: eia-app
+    image: eia-indexer
     command: python -m retrieval.ingest --raw corpus/raw --curated corpus/curated --meta-out /data/index_meta.json
     env_file: .env
     environment:
@@ -20,7 +20,7 @@
 
   worker:
     build: .
-    image: eia-app
+    image: eia-worker
     command: rq worker runs --url redis://redis:6379
     env_file: .env
     environment:
@@ -37,7 +37,7 @@
 
   api:
     build: .
-    image: eia-app
+    image: eia-api
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     env_file: .env
     environment:
