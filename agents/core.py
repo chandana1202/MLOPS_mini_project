@@ -69,24 +69,16 @@ def _norm(s):
 def _json(text):
     if not isinstance(text, str):
         return None
-
     text = text.strip()
-
-    # Remove common markdown fences.
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text).strip()
-
-    # First try strict JSON.
     try:
         return json.loads(text)
     except Exception:
         pass
-
-    # Then parse the first complete JSON value and ignore trailing junk.
     try:
-        decoder = json.JSONDecoder()
-        obj, _ = decoder.raw_decode(text)
+        obj, _ = json.JSONDecoder().raw_decode(text)
         return obj
     except Exception:
         return None
@@ -160,6 +152,8 @@ def reason(s, llm):
         _log(s, "reason", step=s.steps, prompt=p["version"], action=act)
         if not isinstance(act, dict):
             return _escalate(s, "unparseable_model_output")
+        kind = act.get("action")
+        if kind == "final":
             # Some models return "text" instead of "quote"; the verifier needs "quote".
             for c in act.get("citations") or []:
                 if not c.get("quote") and c.get("text"):
@@ -169,7 +163,7 @@ def reason(s, llm):
             if os.getenv("DEMO_BAD_CITATION") == "1" and s.attempts == 0 and act.get("citations"):
                 act["citations"][0]["quote"] = "this sentence appears in no retrieved passage"
             s.draft = act
-        elif act.get("action") == "tool":
+        elif kind == "tool":
             if s.tool_calls >= s.limits.max_tool_calls:
                 return _escalate(s, "max_tool_calls_exceeded")
             s.tool_calls += 1
@@ -183,8 +177,7 @@ def reason(s, llm):
             _log(s, "tool", tool=act.get("tool"), args=act.get("args"),
                  passage_ids=[x["clause_id"] for x in out["passages"]],
                  scores=[round(x["score"], 3) for x in out["passages"]],
-                 latency_s=round(time.monotonic() - t0, 4)
-                 )
+                 latency_s=round(time.monotonic() - t0, 4))
         else:
             return _escalate(s, "malformed_action")
 
