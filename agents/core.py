@@ -149,14 +149,21 @@ def reason(s, llm):
             _log(s, "reason_unparseable", step=s.steps, raw=(r.text or "")[:200])
             r = _llm(s, llm, f"reason_{s.steps}_retry", p["system"], user, "reason", ctx)
             act = _json(r.text)
-        _log(s, "reason", step=s.steps, prompt=p["version"], action=act)
         if not isinstance(act, dict):
+            _log(s, "reason", step=s.steps, prompt=p["version"], action=act)
             return _escalate(s, "unparseable_model_output")
-        kind = act.get("action")
+
+        # Normalise the action value; infer it from the other keys if the model formatted it oddly.
+        raw_kind = act.get("action")
+        kind = str(raw_kind or "").strip().lower()
+        if kind not in ("final", "tool"):
+            kind = "final" if "route" in act else "tool" if "tool" in act else kind
+        _log(s, "reason", step=s.steps, prompt=p["version"], action=act, action_raw=repr(raw_kind))
+
         if kind == "final":
             # Some models return "text" instead of "quote"; the verifier needs "quote".
             for c in act.get("citations") or []:
-                if not c.get("quote") and c.get("text"):
+                if isinstance(c, dict) and not c.get("quote") and c.get("text"):
                     c["quote"] = c["text"]
             # Demo item 6: corrupt the first citation on attempt 0 only, so the verifier
             # catches it and the retry recovers. Off unless DEMO_BAD_CITATION=1.
@@ -179,7 +186,8 @@ def reason(s, llm):
                  scores=[round(x["score"], 3) for x in out["passages"]],
                  latency_s=round(time.monotonic() - t0, 4))
         else:
-            return _escalate(s, "malformed_action")
+            return _escalate(s, "malformed_action",
+                             f"unexpected action value {raw_kind!r}; keys={sorted(act.keys())}"[:300])
 
 
 # ---------------- Verifier ----------------
