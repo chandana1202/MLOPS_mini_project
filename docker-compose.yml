@@ -43,6 +43,8 @@
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+    volumes:
+      - appdata:/data
     ports:
       - "8000:8000"
     depends_on:

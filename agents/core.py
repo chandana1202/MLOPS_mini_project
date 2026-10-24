@@ -153,10 +153,13 @@ def reason(s, llm):
                "strategy": s.strategy, "min_score": MIN_SCORE}   # used by the stub only
         r = _llm(s, llm, f"reason_{s.steps}", p["system"], user, "reason", ctx)
         act = _json(r.text)
+        if not isinstance(act, dict):      # one bounded retry on malformed model output
+            _log(s, "reason_unparseable", step=s.steps, raw=(r.text or "")[:200])
+            r = _llm(s, llm, f"reason_{s.steps}_retry", p["system"], user, "reason", ctx)
+            act = _json(r.text)
         _log(s, "reason", step=s.steps, prompt=p["version"], action=act)
         if not isinstance(act, dict):
             return _escalate(s, "unparseable_model_output")
-        if act.get("action") == "final":
             # Some models return "text" instead of "quote"; the verifier needs "quote".
             for c in act.get("citations") or []:
                 if not c.get("quote") and c.get("text"):

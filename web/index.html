@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EIA Screening</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e2e1dc; --accent:#1f5f4a; --warn:#9a5b00; --bad:#a32020; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#181816; --card:#222220; --ink:#ecebe6; --muted:#a3a29b; --line:#363633; --accent:#5fc3a0; --warn:#e0a24a; --bad:#ff7b7b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  form { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  label { display:flex; flex-direction:column; font-size:.85rem; color:var(--muted); gap:4px; }
+  label.wide { grid-column:1 / -1; }
+  input, select { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  button { grid-column:1 / -1; font:inherit; font-weight:600; background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px; cursor:pointer; }
+  @media (prefers-color-scheme: dark) { button { color:#10201a; } }
+  button:disabled { opacity:.5; cursor:wait; }
+  .route { display:inline-block; font-weight:700; padding:2px 10px; border-radius:999px; border:1px solid var(--accent); color:var(--accent); }
+  .route.ESCALATED { color:var(--warn); border-color:var(--warn); }
+  .route.ERR { color:var(--bad); border-color:var(--bad); }
+  blockquote { margin:8px 0; padding:6px 12px; border-left:3px solid var(--line); color:var(--muted); }
+  .meta { color:var(--muted); font-size:.85rem; }
+  .err { color:var(--bad); }
+  @media (max-width:560px) { form { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>EIA screening</h1>
+  <p class="sub">Describe the project. You get a Category A / B screening opinion with the clauses it relies on.</p>
+
+  <form id="f" class="card">
+    <label class="wide">Sector
+      <input name="sector" required value="Synthetic organic chemicals industry">
+    </label>
+    <label>Capacity <input name="capacity" type="number" min="0" step="any" required value="10"></label>
+    <label>Capacity unit <input name="capacity_unit" required value="units"></label>
+    <label>Project area (ha) <input name="area_ha" type="number" min="0" step="any" required value="5"></label>
+    <label>State <input name="state" required value="Tamil Nadu"></label>
+    <label>Protected area type
+      <select name="protected_area_type" id="pat">
+        <option value="protected_areas">protected_areas</option>
+        <option value="none">none</option>
+      </select>
+    </label>
+    <label>Distance to protected area (km) <input name="distance_to_protected_area_km" id="dist" type="number" min="0" step="any" value="2"></label>
+    <button id="go" type="submit">Screen this project</button>
+  </form>
+
+  <div id="out" class="card" hidden></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+$("pat").addEventListener("change", () => {
+  $("dist").disabled = $("pat").value === "none";
+});
+
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target), body = {};
+  for (const [k, v] of fd.entries()) {
+    if (["capacity", "area_ha", "distance_to_protected_area_km"].includes(k)) {
+      if (v !== "") body[k] = Number(v);
+    } else body[k] = v;
+  }
+  if (body.protected_area_type === "none") delete body.distance_to_protected_area_km;
+
+  $("go").disabled = true;
+  show("<p class='meta'>Submitting…</p>");
+  try {
+    const r = await fetch("/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (r.status === 422) {
+      const j = await r.json().catch(() => ({}));
+      return show(`<span class="route ERR">REJECTED</span><p>The request failed input validation.</p><pre class="meta">${esc(JSON.stringify(j.detail ?? j, null, 2))}</pre>`);
+    }
+    if (r.status !== 202) return show(`<span class="route ERR">ERROR</span><p>Server returned HTTP ${r.status}.</p>`);
+    const { run_id } = await r.json();
+    const t0 = Date.now();
+    while (Date.now() - t0 < 180000) {
+      show(`<p class="meta">Working… ${Math.round((Date.now() - t0) / 1000)} s (run ${esc(run_id)})</p>`);
+      await new Promise(res => setTimeout(res, 2000));
+      const s = await (await fetch(`/runs/${run_id}`)).json();
+      if (s.status === "finished") return render(s.result);
+      if (s.status === "failed") return show(`<span class="route ERR">FAILED</span><p>The run failed. See the runbook.</p>`);
+    }
+    show(`<span class="route ERR">TIMEOUT</span><p>No result after 3 minutes.</p>`);
+  } catch (err) {
+    show(`<span class="route ERR">ERROR</span><p class="err">${esc(err.message)}</p>`);
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+function show(html) { const o = $("out"); o.hidden = false; o.innerHTML = html; }
+
+function render(res) {
+  const cites = (res.citations || []).map(c =>
+    `<blockquote><strong>${esc(c.clause_id)}</strong><br>${esc(c.quote)}</blockquote>`).join("");
+  const tokens = (res.usage || []).reduce((n, u) => n + u.prompt_tokens + u.completion_tokens, 0);
+  const cost = (res.usage || []).reduce((n, u) => n + (u.cost || 0), 0);
+  show(`
+    <span class="route ${esc(res.route)}">${esc(res.route)}</span>
+    ${res.escalation_reason ? `<p class="meta">Escalated: ${esc(res.escalation_reason)}</p>` : ""}
+    <p>${esc(res.basis)}</p>
+    ${cites ? `<h3>Cited clauses</h3>${cites}` : ""}
+    <p class="meta">${res.verified ? "Citations verified against the retrieved text." : "Not verified."}
+      ${tokens ? ` · ${tokens} tokens` : ""}${cost ? ` · $${cost.toFixed(5)}` : ""}
+      ${res.elapsed_s ? ` · ${Number(res.elapsed_s).toFixed(1)} s` : ""}</p>
+    <p class="meta">${esc(res.disclaimer || "Screening opinion only; an accredited consultant makes the determination.")}</p>
+  `);
+}
+</script>
+</body>
+</html>
